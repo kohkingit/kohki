@@ -92,6 +92,9 @@ export function createMockBackend(): SheetsBackend {
         return trimmed;
       });
     },
+    async addSheet(title: string) {
+      data[title] ??= [];
+    },
     async batchUpdate(updates: CellUpdate[]) {
       await new Promise((r) => setTimeout(r, 300));
       for (const u of updates) {

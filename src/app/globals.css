@@ -139,3 +139,10 @@ dl.rules > div { display: grid; grid-template-columns: 7.5em minmax(0, 1fr); gap
 dl.rules > div:first-child { border-top: 0; }
 dl.rules dt { font-weight: 700; color: var(--muted); font-size: 13px; }
 dl.rules dd { margin: 0; overflow-wrap: anywhere; }
+
+/* 通知の鍵 */
+.keyrow { display: flex; flex-direction: column; gap: 4px; background: var(--bg); border-radius: 10px; padding: 10px 12px; }
+.keyrow code { font-size: 12px; word-break: break-all; user-select: all; -webkit-user-select: all; }
+.keyrow button { align-self: flex-start; }
+html { scroll-behavior: smooth; }
+section.sec { scroll-margin-top: 12px; }

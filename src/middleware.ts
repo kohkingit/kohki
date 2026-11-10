@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { COOKIE_NAME, isValidSession } from "@/lib/auth";
 
 // ログインなしで開けるもの
-const PUBLIC = ["/login", "/api/login", "/manifest.webmanifest", "/sw.js", "/favicon.ico", "/icon-192.png", "/icon-512.png", "/apple-touch-icon.png", "/icon.svg"];
+const PUBLIC = ["/login", "/api/login", "/api/cron/notify", "/manifest.webmanifest", "/sw.js", "/favicon.ico", "/icon-192.png", "/icon-512.png", "/apple-touch-icon.png", "/icon.svg"];
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;

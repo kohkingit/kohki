@@ -18,6 +18,7 @@ const backend: SheetsBackend = {
   async batchUpdate(data) {
     writes.push(data);
   },
+  async addSheet() {},
 };
 vi.mock("./sheets", async (orig) => ({ ...(await orig<typeof import("./sheets")>()), sheets: () => backend }));
 vi.mock("./jst", async (orig) => ({ ...(await orig<typeof import("./jst")>()), jstNow: () => ({ today: 20261101, hour: 21, minute: 0 }) }));

@@ -6,6 +6,7 @@ import { BS_URL, INSTAGRAM_POST_RE } from "@/lib/model";
 import { METRICS, type MetricKey } from "@/lib/schema";
 import { modeLabel, type Mode, type Settings } from "@/lib/settings";
 import { postJson, type ApiResult } from "./api";
+import NotifyCard from "./NotifyCard";
 
 const SHEET_URL = "https://docs.google.com/spreadsheets/d/1TqcoHaZjGDk1VMWm5O0uQKHCFJte1Q5oE_Gj6tjF_7U/edit";
 const STALE_MS = 5 * 60 * 1000;
@@ -112,20 +113,20 @@ export default function Dashboard() {
 
       {data && <RulesCard settings={data.settings} />}
 
-      <Section ready={!!data} title="確認して予約する" count={data?.approve.length} hint="AIが作ったデザインとキャプションを見て、Meta Business Suiteで予約する">
+      <Section id="approve" ready={!!data} title="確認して予約する" count={data?.approve.length} hint="AIが作ったデザインとキャプションを見て、Meta Business Suiteで予約する">
         {data && <List items={data.approve} empty="確認待ちの投稿はありません。AIが「承認待ち」にするとここに出ます。" render={(t) => <ApproveCard key={t.row} t={t} onDone={done} />} />}
       </Section>
 
-      <Section ready={!!data} title="投稿URLを入れる" count={data?.url.length} hint="投稿されたら、Instagramで投稿の「…」→「リンクをコピー」して貼る">
+      <Section id="url" ready={!!data} title="投稿URLを入れる" count={data?.url.length} hint="投稿されたら、Instagramで投稿の「…」→「リンクをコピー」して貼る">
         {data && <List items={data.url} empty="入れるURLはありません。" render={(t) => <UrlCard key={t.row} t={t} onDone={done} />} />}
       </Section>
 
-      <Section ready={!!data} title="インサイトを記録する" count={data?.insight.length} hint={`投稿の${(data?.timings ?? ["24h", "72h", "7d"]).join("・")}後に、Instagramの「インサイトを見る」の数字を入れる`}>
+      <Section id="insight" ready={!!data} title="インサイトを記録する" count={data?.insight.length} hint={`投稿の${(data?.timings ?? ["24h", "72h", "7d"]).join("・")}後に、Instagramの「インサイトを見る」の数字を入れる`}>
         {data?.insightError && <p className="secerr">{data.insightError}</p>}
         {data && !data.insightError && <List items={data.insight} empty="記録が必要な投稿はありません。" render={(t) => <InsightCard key={`${t.row}-${t.timing}`} t={t} onDone={done} />} />}
       </Section>
 
-      <Section ready={!!data} title="写真の許諾まわり" count={data?.permit.length} hint="DMやメールの送信、Canvaへのアップロードはこうきだけができる作業">
+      <Section id="permit" ready={!!data} title="写真の許諾まわり" count={data?.permit.length} hint="DMやメールの送信、Canvaへのアップロードはこうきだけができる作業">
         {data?.permitError && <p className="secerr">{data.permitError}</p>}
         {data && !data.permitError && (
           <List items={data.permit} empty={permitEmpty(data.settings)} render={(t, i) => <PermitCard key={i} t={t} />} />
@@ -148,6 +149,8 @@ export default function Dashboard() {
             <p className="empty">準備中の投稿はありません。</p>
           ))}
       </Section>
+
+      <NotifyCard />
 
       <Section title="毎週の流れ">
         <div className="card">
@@ -190,10 +193,10 @@ export default function Dashboard() {
   );
 }
 
-function Section({ title, count, hint, ready = true, children }: { title: string; count?: number; hint?: string; ready?: boolean; children: React.ReactNode }) {
+function Section({ id, title, count, hint, ready = true, children }: { id?: string; title: string; count?: number; hint?: string; ready?: boolean; children: React.ReactNode }) {
   const loading = !ready;
   return (
-    <section className="sec" aria-label={title}>
+    <section className="sec" aria-label={title} id={id}>
       <h2>
         {title}
         {count !== undefined && <span className={"badge" + (count > 0 ? " hot" : "")} aria-label={`${count}件`}>{count}</span>}

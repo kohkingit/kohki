@@ -17,6 +17,8 @@ export interface SheetsBackend {
   batchGet(ranges: string[]): Promise<Grid[]>;
   /** 複数セルをまとめて書く（ユーザーが入力したのと同じ扱い） */
   batchUpdate(data: CellUpdate[]): Promise<void>;
+  /** タブを1つ追加する（「通知」タブがないときだけ使う） */
+  addSheet(title: string): Promise<void>;
 }
 
 const API = "https://sheets.googleapis.com/v4/spreadsheets";
@@ -79,6 +81,9 @@ async function call(path: string, init: RequestInit = {}): Promise<unknown> {
 }
 
 const realBackend: SheetsBackend = {
+  async addSheet(title) {
+    await call(`:batchUpdate`, { method: "POST", body: JSON.stringify({ requests: [{ addSheet: { properties: { title } } }] }) });
+  },
   async batchGet(ranges) {
     const q = new URLSearchParams({ valueRenderOption: "FORMATTED_VALUE", majorDimension: "ROWS" });
     ranges.forEach((r) => q.append("ranges", r));
