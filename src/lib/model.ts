@@ -1,6 +1,7 @@
 // シートの中身から「こうきのやること」を組み立てる（純粋関数。テストしやすいようにI/Oなし）。
 import { daysBetween, fmtDate, fmtTime, isAfterPostTime, parseDate, type DateKey, type JstNow } from "./jst";
 import { parseSettings, postTime, ruleValue, type Settings } from "./settings";
+import { dueTiming, hoursSince, pairKey, parseLoggedPairs, parseTimings, timingName } from "./timing";
 import { CAL_HEADERS, findCols, HeaderError, LOG_HEADERS, PERMIT_HEADERS, TAB_CAL, TAB_LOG, TAB_PERMIT } from "./schema";
 import type { Grid } from "./schema";
 
@@ -54,18 +55,6 @@ export function parseCalendar(grid: Grid): CalRow[] {
   return out;
 }
 
-/** 分析ログに記録済みの投稿日 */
-export function parseLoggedDates(grid: Grid): Set<DateKey> {
-  const [head, ...rows] = grid;
-  const c = findCols(TAB_LOG, head, LOG_HEADERS);
-  const s = new Set<DateKey>();
-  for (const r of rows) {
-    const k = parseDate(cell(r, c.date));
-    if (k) s.add(k);
-  }
-  return s;
-}
-
 /** キャプションの先頭・末尾に付いた余計な「"」を取り除く */
 export function cleanCaption(t: string): string {
   return t.trim().replace(/^["“”]+/, "").replace(/["“”]+$/, "").trim();
@@ -101,6 +90,10 @@ export interface UrlTask { row: number; date: DateKey; dateLabel: string; type: 
 export interface InsightTask {
   row: number; date: DateKey; dateLabel: string; type: string; area: string; spots: string;
   daysSince: number; urgent: boolean; postUrl: string | null;
+  /** 今回記録するタイミング（24h / 72h / 7d） */
+  timing: string; timingName: string;
+  /** 記録しないまま過ぎたタイミング */
+  skipped: string[];
 }
 export interface PermitTask { kind: "gmail" | "dm" | "dm-wait" | "upload"; title: string; sub: string; link: string | null; linkText: string }
 export interface UpcomingItem { row: number; dateLabel: string; label: string; status: string; scheduled: boolean }
@@ -117,6 +110,8 @@ export interface Dashboard {
   settings: Settings;
   /** 今のモードの「投稿曜日・時刻」「投稿本数」（毎週の流れに出す） */
   schedule: { days: string | null; count: string | null; time: string };
+  /** インサイトの計測タイミング（例：24h・72h・7d） */
+  timings: string[];
 }
 
 const PREP_STATUSES = ["アイデア", "下書き", "画像作成中", "承認済み"];
@@ -181,15 +176,23 @@ export function buildDashboard(calGrid: Grid, logGrid: Grid, permitGrid: Grid, n
 
   let insight: InsightTask[] = [];
   let insightError: string | null = null;
+  const timings = parseTimings(settings);
   try {
-    const logged = parseLoggedDates(logGrid);
+    const logged = parseLoggedPairs(logGrid);
     insight = cal
-      .filter((r) => (r.status === "投稿済み" || !!r.url) && r.status !== "見送り" && daysBetween(r.date, now.today) >= 3 && !logged.has(r.date))
-      .sort(byDate)
-      .map((r) => {
-        const d = daysBetween(r.date, now.today);
-        return { row: r.row, date: r.date, dateLabel: fmtDate(r.date), type: r.type || "カルーセル", area: r.area, spots: r.spots, daysSince: d, urgent: d >= 7, postUrl: safeLink(r.url) };
-      });
+      .filter((r) => (r.status === "投稿済み" || !!r.url) && r.status !== "見送り")
+      .flatMap((r) => {
+        const elapsed = hoursSince(r.date, time, now);
+        const d = dueTiming(timings, elapsed, (label) => logged.has(pairKey(r.date, label)));
+        if (!d) return [];
+        return [{
+          row: r.row, date: r.date, dateLabel: fmtDate(r.date), type: r.type || "カルーセル", area: r.area, spots: r.spots,
+          daysSince: daysBetween(r.date, now.today), postUrl: safeLink(r.url),
+          timing: d.due.label, timingName: timingName(d.due), skipped: d.skipped.map((t) => t.label),
+          urgent: elapsed >= d.due.hours + 24, // そのタイミングから1日以上過ぎたら目立たせる
+        }];
+      })
+      .sort((a, b) => a.date - b.date || a.row - b.row);
   } catch (e) {
     if (!(e instanceof HeaderError)) throw e;
     insightError = e.message;
@@ -225,6 +228,7 @@ export function buildDashboard(calGrid: Grid, logGrid: Grid, permitGrid: Grid, n
 
   return {
     approve, url, insight, insightError, permit, permitError, upcoming, settings,
+    timings: timings.map((t) => t.label),
     schedule: { days: ruleValue(settings, "投稿曜日・時刻"), count: ruleValue(settings, "投稿本数"), time: pt },
     summary: {
       total: approve.length + url.length + insight.length + permit.length,

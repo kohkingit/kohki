@@ -120,9 +120,9 @@ export default function Dashboard() {
         {data && <List items={data.url} empty="入れるURLはありません。" render={(t) => <UrlCard key={t.row} t={t} onDone={done} />} />}
       </Section>
 
-      <Section ready={!!data} title="インサイトを記録する" count={data?.insight.length} hint="投稿から3日たったら、Instagramの「インサイトを見る」の数字を入れる">
+      <Section ready={!!data} title="インサイトを記録する" count={data?.insight.length} hint={`投稿の${(data?.timings ?? ["24h", "72h", "7d"]).join("・")}後に、Instagramの「インサイトを見る」の数字を入れる`}>
         {data?.insightError && <p className="secerr">{data.insightError}</p>}
-        {data && !data.insightError && <List items={data.insight} empty="記録が必要な投稿はありません。" render={(t) => <InsightCard key={t.row} t={t} onDone={done} />} />}
+        {data && !data.insightError && <List items={data.insight} empty="記録が必要な投稿はありません。" render={(t) => <InsightCard key={`${t.row}-${t.timing}`} t={t} onDone={done} />} />}
       </Section>
 
       <Section ready={!!data} title="写真の許諾まわり" count={data?.permit.length} hint="DMやメールの送信、Canvaへのアップロードはこうきだけができる作業">
@@ -155,7 +155,7 @@ export default function Dashboard() {
             <li>
               <b>日曜</b>：翌週分
               {data?.schedule.days || data?.schedule.count ? `（${[data.schedule.days, data.schedule.count].filter(Boolean).join("・")}）` : ""}
-              を確認して予約。3日以上たった投稿のインサイトも記録
+              を確認して予約。インサイトの記録（{(data?.timings ?? ["24h", "72h", "7d"]).join("・")}）がたまっていたら入れる
             </li>
             <li><b>月曜</b>：AIが週次分析</li>
             <li><b>木曜</b>：AIが翌々週分を企画</li>
@@ -390,11 +390,11 @@ function InsightCard({ t, onDone }: { t: InsightTask; onDone: Toast }) {
     }
     setBusy(true);
     setMsg({ info: "記録中…" });
-    const r = await postJson("/api/insight", { row: t.row, date: t.date, metrics: vals });
+    const r = await postJson("/api/insight", { row: t.row, date: t.date, timing: t.timing, metrics: vals });
     setBusy(false);
     if (r.ok) {
       setMsg(null);
-      onDone(`${t.dateLabel}の投稿を分析ログに記録しました`);
+      onDone(`${t.dateLabel}の投稿の${t.timing}を分析ログに記録しました`);
     } else setMsg(r);
   }
 
@@ -402,10 +402,12 @@ function InsightCard({ t, onDone }: { t: InsightTask; onDone: Toast }) {
     <article className={"card" + (t.urgent ? " urgent" : "")}>
       <div className="row">
         <span className="date">{t.dateLabel}</span>
-        <span className={"tag " + (t.urgent ? "coral" : "warn")}>投稿から{t.daysSince}日</span>
+        <span className={"tag " + (t.urgent ? "coral" : "warn")}>{t.timingName}の記録</span>
+        <span className="tag">投稿から{t.daysSince}日</span>
         {t.area && <span className="tag">{t.area}</span>}
       </div>
       {t.spots && <p className="spots">{t.spots}</p>}
+      {t.skipped.length > 0 && <p className="spots">{t.skipped.join("・")}は時間が過ぎたので記録しません。今の数字を{t.timing}として入れてください。</p>}
       {t.postUrl && <Ext href={t.postUrl}>投稿を開く</Ext>}
       <div className="grid">
         {METRICS.map((m) => (

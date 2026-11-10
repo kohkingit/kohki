@@ -4,7 +4,7 @@ import { colLetter, findCols, HeaderError } from "./schema";
 import { jstNow, parseDate } from "./jst";
 
 const CAL_HEAD = ["投稿日", "曜日", "ステータス", "投稿形式", "地域", "スポット", "テーマ・季節", "切り口（1行目のフック）", "キャプション", "ハッシュタグ", "素材URL", "素材の出典・権利", "デザインURL", "投稿URL", "メモ"];
-const LOG_HEAD = ["投稿日", "スポット", "投稿形式", "リーチ", "いいね", "保存", "シェア", "コメント", "プロフィールアクセス", "フォロー増", "保存率", "エンゲージ率", "記録日"];
+const LOG_HEAD = ["投稿日", "スポット", "投稿形式", "リーチ", "いいね", "保存", "シェア", "コメント", "プロフィールアクセス", "フォロー増", "保存率", "エンゲージ率", "記録日", "計測タイミング"];
 const PERMIT_HEAD = ["依頼日", "スポット", "相手", "種別", "連絡手段", "連絡先・URL", "写真URL", "ステータス", "利用条件", "クレジット表記", "証拠の保存先", "メモ", "Canva素材名", "依頼ID", "再利用可否"];
 
 // 2026/11/01（日）18:00 JST
@@ -98,8 +98,10 @@ describe("buildDashboard", () => {
     const after = buildDashboard(grid, log, permit, { ...NOW, hour: 20 });
     expect(after.url.map((u) => u.date)).toEqual([20261029, 20261101]);
   });
-  it("インサイト：投稿済みかURLあり、3日以上、未記録", () => {
+  it("インサイト：投稿済みかURLあり、過ぎたタイミングで未記録のもの", () => {
     expect(d.insight.map((i) => [i.date, i.daysSince, i.urgent])).toEqual([[20261020, 12, true]]);
+    // 12日たっているので 7d を記録。24h・72h は過ぎたので省略。10/27 は 72h 記録済み（タイミング空＝72h扱い）で 7d はまだ
+    expect(d.insight[0]).toMatchObject({ timing: "7d", skipped: ["24h", "72h"] });
   });
   it("許諾まわり", () => {
     expect(d.permit.map((p) => p.kind + ":" + p.title)).toEqual([
@@ -126,4 +128,19 @@ describe("buildDashboard", () => {
     expect(x.insightError).toMatch("リーチ");
     expect(x.approve.length).toBe(2);
   });
+});
+
+describe("計測タイミング", () => {
+  const head = ["投稿日", "ステータス", "投稿形式", "地域", "スポット", "切り口（1行目のフック）", "キャプション", "ハッシュタグ", "デザインURL", "投稿URL", "メモ"];
+  const cal = [head, ["2026/11/01", "投稿済み", "カルーセル"]];
+  const log = (...t: string[]) => [LOG_HEAD, ...t.map((x) => ["2026/11/01", "", "", "", "", "", "", "", "", "", "", "", "", x])];
+  const at = (day: number, hour: number) => ({ today: 20261100 + day, hour, minute: 0 });
+  const due = (l: string[][], now: { today: number; hour: number; minute: number }) =>
+    buildDashboard(cal, l, [PERMIT_HEAD], now).insight.map((i) => [i.timing, i.urgent]);
+  it("24時間たつまでは出ない", () => expect(due(log(), at(2, 19))).toEqual([]));
+  it("24時間で24h", () => expect(due(log(), at(2, 20))).toEqual([["24h", false]]));
+  it("24hを入れたら72hまで出ない", () => expect(due(log("24h"), at(3, 20))).toEqual([]));
+  it("72時間で72h", () => expect(due(log("24h"), at(4, 20))).toEqual([["72h", false]]));
+  it("7日で7d、1日遅れで目立たせる", () => expect(due(log("24h", "72h"), at(9, 21))).toEqual([["7d", true]]));
+  it("全部入れたら出ない", () => expect(due(log("24h", "72h", "7d"), at(20, 0))).toEqual([]));
 });

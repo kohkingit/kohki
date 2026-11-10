@@ -8,7 +8,7 @@ export async function POST(req: Request) {
     const body = await readJson(req);
     const { row, date } = target(body);
     const metrics = parseMetrics(body.metrics);
-    await recordInsight(row, date, metrics);
+    await recordInsight(row, date, String(body.timing ?? ""), metrics);
     return ok();
   } catch (e) {
     return errorResponse(e);

@@ -6,7 +6,8 @@ import { AppError, MSG_CHANGED } from "./errors";
 import { fmtSheetDate, jstNow, parseDate, type DateKey } from "./jst";
 import { buildDashboard, INSTAGRAM_POST_RE, type Dashboard } from "./model";
 import { a1, CAL_HEADERS, colLetter, findCols, LOG_HEADERS, METRICS, normHeader, TAB_CAL, TAB_LOG, TAB_PERMIT, TAB_SETTINGS, type Grid, type MetricKey } from "./schema";
-import { modeFromRaw, modeLabel, modeRaw, parseSettings, type Mode } from "./settings";
+import { modeFromRaw, modeLabel, modeRaw, parseSettings, postTime, type Mode } from "./settings";
+import { hoursSince, normTiming, pairKey, parseLoggedPairs, parseTimings, timingName } from "./timing";
 import { safeText, sheets, type CellUpdate } from "./sheets";
 
 const LAST_COL = "AZ";
@@ -105,9 +106,16 @@ export function parseMetrics(input: unknown): Metrics {
 }
 
 /** 分析ログの最初の空き行に1行書く（保存率・エンゲージ率などの数式列は触らない） */
-export async function recordInsight(row: number, date: DateKey, metrics: Metrics): Promise<void> {
+export async function recordInsight(row: number, date: DateKey, timing: string, metrics: Metrics): Promise<void> {
   const cur = await readCalRow(row, date);
   if (cur.status !== "投稿済み" && !cur.url) throw new AppError("changed", MSG_CHANGED, 409);
+
+  // 計測タイミングは設定タブのルール「インサイト記録」にあるものだけ。まだその時間になっていなければ書かない
+  const settings = parseSettings(await readSettingsGrid());
+  const t = parseTimings(settings).find((x) => x.label === normTiming(timing));
+  if (!t) throw new AppError("changed", MSG_CHANGED, 409);
+  if (hoursSince(date, postTime(settings), jstNow()) < t.hours)
+    throw new AppError("invalid", `まだ投稿から${timingName(t)}になっていません。時間がたってから記録してください。`, 400);
 
   const [log] = await sheets().batchGet([a1(TAB_LOG, `A1:${LAST_COL}`)]);
   const c = findCols(TAB_LOG, log[0], LOG_HEADERS);
@@ -116,10 +124,10 @@ export async function recordInsight(row: number, date: DateKey, metrics: Metrics
   if (Object.values(c).some((i) => formulaCols.includes(i)))
     throw new AppError("header", "分析ログの見出しがおかしいです（数式の列と重なっています）。シートを確認してください。", 500);
 
-  // 書く直前に、同じ投稿日がないか再確認（二重記録しない）
+  // 書く直前に、同じ投稿日・同じタイミングがないか再確認（二重記録しない）
   const rows = log.slice(1);
-  if (rows.some((r) => parseDate(r[c.date]) === date))
-    throw new AppError("duplicate", "この投稿はもう分析ログに記録されています。「最新にする」を押してください。", 409);
+  if (parseLoggedPairs(log).has(pairKey(date, t.label)))
+    throw new AppError("duplicate", `この投稿の${t.label}はもう分析ログに記録されています。「最新にする」を押してください。`, 409);
 
   // 最初の空き行：このアプリが書く列がすべて空の行
   const writeCols = Object.values(c);
@@ -133,6 +141,7 @@ export async function recordInsight(row: number, date: DateKey, metrics: Metrics
     [c.type, safeText(cur.type || "カルーセル")],
     ...METRICS.map((m) => [c[m.key], metrics[m.key]] as [number, number]),
     [c.recorded, fmtSheetDate(jstNow().today)],
+    [c.timing, t.label],
   ];
   const data: CellUpdate[] = values.map(([col, v]) => ({ range: a1(TAB_LOG, `${colLetter(col)}${target}`), values: [[v]] }));
   await sheets().batchUpdate(data);

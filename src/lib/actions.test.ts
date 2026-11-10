@@ -25,7 +25,7 @@ vi.mock("./jst", async (orig) => ({ ...(await orig<typeof import("./jst")>()), j
 const { markScheduled, savePostUrl, recordInsight, parseMetrics, switchMode, loadDashboard } = await import("./actions");
 
 const CAL_HEAD = ["投稿日", "曜日", "ステータス", "投稿形式", "地域", "スポット", "テーマ・季節", "切り口（1行目のフック）", "キャプション", "ハッシュタグ", "素材URL", "素材の出典・権利", "デザインURL", "投稿URL", "メモ"];
-const LOG_HEAD = ["投稿日", "スポット", "投稿形式", "リーチ", "いいね", "保存", "シェア", "コメント", "プロフィールアクセス", "フォロー増", "保存率", "エンゲージ率", "記録日"];
+const LOG_HEAD = ["投稿日", "スポット", "投稿形式", "リーチ", "いいね", "保存", "シェア", "コメント", "プロフィールアクセス", "フォロー増", "保存率", "エンゲージ率", "記録日", "計測タイミング"];
 const M = { reach: "100", like: "10", save: "5", share: "1", comment: "0", profile: "3", follow: "1" };
 
 beforeEach(() => {
@@ -80,20 +80,30 @@ describe("投稿URL", () => {
 });
 
 describe("インサイト", () => {
-  it("最初の空き行に A〜J と M だけ書く（K・Lは触らない）", async () => {
-    await recordInsight(4, 20261025, parseMetrics(M));
+  it("最初の空き行に A〜J・M・N だけ書く（K・Lは触らない）", async () => {
+    await recordInsight(4, 20261025, "7d", parseMetrics(M));
     const ranges = writes[0].map((w) => w.range);
-    expect(ranges).toEqual(["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "M"].map((c) => `'分析ログ'!${c}3`));
-    expect(writes[0].map((w) => w.values[0][0])).toEqual(["2026/10/25", "嵐山", "リール", 100, 10, 5, 1, 0, 3, 1, "2026/11/01"]);
+    expect(ranges).toEqual(["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "M", "N"].map((c) => `'分析ログ'!${c}3`));
+    expect(writes[0].map((w) => w.values[0][0])).toEqual(["2026/10/25", "嵐山", "リール", 100, 10, 5, 1, 0, 3, 1, "2026/11/01", "7d"]);
   });
-  it("同じ投稿日があれば書かない", async () => {
-    grids["分析ログ"].push(["2026/10/25"]);
-    await expect(recordInsight(4, 20261025, parseMetrics(M))).rejects.toMatchObject({ code: "duplicate" });
+  it("同じ投稿日でもタイミングが違えば書ける", async () => {
+    grids["分析ログ"].push(["2026/10/25", "", "", "", "", "", "", "", "", "", "", "", "", "72h"]);
+    await recordInsight(4, 20261025, "7d", parseMetrics(M));
+    expect(writes.length).toBe(1);
+  });
+  it("まだその時間になっていなければ書かない", async () => {
+    grids["投稿カレンダー"][2][2] = "投稿済み";
+    await expect(recordInsight(3, 20261029, "7d", parseMetrics(M))).rejects.toMatchObject({ code: "invalid" });
+    expect(writes).toEqual([]);
+  });
+  it("同じ投稿日・同じタイミングがあれば書かない", async () => {
+    grids["分析ログ"].push(["2026/10/25", "", "", "", "", "", "", "", "", "", "", "", "", "7日"]);
+    await expect(recordInsight(4, 20261025, "7d", parseMetrics(M))).rejects.toMatchObject({ code: "duplicate" });
     expect(writes).toEqual([]);
   });
   it("数式に見える文字は文字として書く", async () => {
     grids["投稿カレンダー"][2][2] = "投稿済み";
-    await recordInsight(3, 20261029, parseMetrics(M));
+    await recordInsight(3, 20261029, "72h", parseMetrics(M));
     expect(writes[0][1].values[0][0]).toBe("'=白川郷");
   });
   it("数字が欠けていたらエラー", () => {

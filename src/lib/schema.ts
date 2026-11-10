@@ -41,6 +41,7 @@ export const LOG_HEADERS = {
   profile: "プロフィールアクセス",
   follow: "フォロー増",
   recorded: "記録日",
+  timing: "計測タイミング",
 } as const;
 
 export const PERMIT_HEADERS = {
