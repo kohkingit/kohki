@@ -5,18 +5,49 @@ import "server-only";
 import { AppError, MSG_CHANGED } from "./errors";
 import { fmtSheetDate, jstNow, parseDate, type DateKey } from "./jst";
 import { buildDashboard, INSTAGRAM_POST_RE, type Dashboard } from "./model";
-import { a1, CAL_HEADERS, colLetter, findCols, LOG_HEADERS, METRICS, normHeader, TAB_CAL, TAB_LOG, TAB_PERMIT, type MetricKey } from "./schema";
+import { a1, CAL_HEADERS, colLetter, findCols, LOG_HEADERS, METRICS, normHeader, TAB_CAL, TAB_LOG, TAB_PERMIT, TAB_SETTINGS, type Grid, type MetricKey } from "./schema";
+import { modeFromRaw, modeLabel, modeRaw, parseSettings, type Mode } from "./settings";
 import { safeText, sheets, type CellUpdate } from "./sheets";
 
 const LAST_COL = "AZ";
 
+/** 設定タブを読む。読めなければ null（画面は「テスト期間中」として出し、注意を出す） */
+async function readSettingsGrid(): Promise<Grid | null> {
+  try {
+    const [g] = await sheets().batchGet([a1(TAB_SETTINGS, "A1:Z100")]);
+    return g;
+  } catch (e) {
+    console.warn("設定タブが読めません", e);
+    return null;
+  }
+}
+
 export async function loadDashboard(): Promise<Dashboard> {
-  const [cal, log, permit] = await sheets().batchGet([
-    a1(TAB_CAL, `A1:${LAST_COL}`),
-    a1(TAB_LOG, `A1:${LAST_COL}`),
-    a1(TAB_PERMIT, `A1:${LAST_COL}`),
+  const [[cal, log, permit], settings] = await Promise.all([
+    sheets().batchGet([a1(TAB_CAL, `A1:${LAST_COL}`), a1(TAB_LOG, `A1:${LAST_COL}`), a1(TAB_PERMIT, `A1:${LAST_COL}`)]),
+    readSettingsGrid(),
   ]);
-  return buildDashboard(cal, log, permit, jstNow());
+  return buildDashboard(cal, log, permit, jstNow(), settings);
+}
+
+/**
+ * テスト期間の ON/OFF を切り替える。書くのは「テスト期間」の行の 値（B2）と 更新日（D2）だけ。
+ * 書く直前に読み直し、画面に出ていた値と違えば書かない。
+ */
+export async function switchMode(shownRaw: string, to: Mode): Promise<void> {
+  const [grid] = await sheets().batchGet([a1(TAB_SETTINGS, "A1:Z100")]);
+  const s = parseSettings(grid);
+  if (!s.cells)
+    throw new AppError("header", `設定タブを確認してください。${s.warning ?? ""}（このままでは書き込みません）`, 500);
+  const cur = (s.raw ?? "").normalize("NFKC").trim().toUpperCase();
+  if (!modeFromRaw(cur))
+    throw new AppError("header", `設定タブを確認してください。「テスト期間」の値が「${s.raw || "空"}」です。シートで ON か OFF に直してください（このままでは書き込みません）。`, 500);
+  if (cur !== shownRaw.normalize("NFKC").trim().toUpperCase()) throw new AppError("changed", MSG_CHANGED, 409);
+  if (modeFromRaw(cur) === to) throw new AppError("changed", `もう「${modeLabel(to)}」になっています。「最新にする」を押してください。`, 409);
+  await sheets().batchUpdate([
+    { range: a1(TAB_SETTINGS, s.cells.value), values: [[modeRaw(to)]] },
+    { range: a1(TAB_SETTINGS, s.cells.updated), values: [[fmtSheetDate(jstNow().today)]] },
+  ]);
 }
 
 /** 投稿カレンダーの見出しと1行を読み直し、投稿日が同じか確かめる */

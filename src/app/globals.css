@@ -121,3 +121,21 @@ footer button { min-height: 36px; padding: 6px 12px; font-size: 12px; }
 /* ログイン画面 */
 .login { min-height: 100dvh; display: grid; place-items: center; padding: 24px 16px; }
 .login form { width: 100%; max-width: 360px; display: flex; flex-direction: column; gap: 14px; }
+
+/* テスト期間 / 本番運用 */
+.mode { font-family: var(--body); font-size: 13px; font-weight: 700; border-radius: 999px; padding: 4px 12px; white-space: nowrap; }
+.mode.test { background: var(--teal-soft); color: var(--teal); }
+.mode.live { background: var(--coral); color: #fff; }
+button.small { min-height: 36px; padding: 6px 14px; font-size: 13px; }
+.diff { display: flex; flex-direction: column; background: var(--surface); border-radius: 10px; overflow: hidden; }
+.drow { padding: 9px 12px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 2px; }
+.drow:first-child { border-top: 0; }
+.drow.same { opacity: .6; }
+.dname { font-size: 12px; font-weight: 700; color: var(--muted); }
+.dval { font-size: 14px; overflow-wrap: anywhere; }
+.dfrom { color: var(--muted); text-decoration: line-through; }
+dl.rules { margin: 0; gap: 0; padding: 4px 16px; }
+dl.rules > div { display: grid; grid-template-columns: 7.5em minmax(0, 1fr); gap: 10px; padding: 9px 0; border-top: 1px solid var(--line); font-size: 14px; }
+dl.rules > div:first-child { border-top: 0; }
+dl.rules dt { font-weight: 700; color: var(--muted); font-size: 13px; }
+dl.rules dd { margin: 0; overflow-wrap: anywhere; }

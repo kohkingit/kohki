@@ -3,7 +3,7 @@
 import type { CellUpdate, SheetsBackend } from "./sheets";
 import type { Grid } from "./schema";
 import { fmtSheetDate, jstNow, type DateKey } from "./jst";
-import { TAB_CAL, TAB_LOG, TAB_PERMIT } from "./schema";
+import { TAB_CAL, TAB_LOG, TAB_PERMIT, TAB_SETTINGS } from "./schema";
 
 function addDays(k: DateKey, n: number): DateKey {
   const d = new Date(Date.UTC(Math.floor(k / 10000), (Math.floor(k / 100) % 100) - 1, k % 100) + n * 864e5);
@@ -38,7 +38,21 @@ function build(): Record<string, Grid> {
     ["", "大涌谷", "@hakone_photo", "個人", "Instagram DM", "@hakone_photo", "", "候補", "", "", "", "", "", "", ""],
     [D(-7), "河津七滝", "@izu_trip", "個人", "Instagram DM", "https://www.instagram.com/izu_trip/", "", "依頼済み", "", "", "", "", "", "", ""],
   ];
-  return { [TAB_CAL]: cal, [TAB_LOG]: log, [TAB_PERMIT]: permit };
+  const settings: Grid = [
+    ["項目", "値", "説明", "更新日"],
+    ["テスト期間", "ON", "ON＝テスト期間中／OFF＝本番運用。アプリから切り替える。AIは毎回ここを読んで動き方を決める", D(-1)],
+    ["", "", ""],
+    ["ルール", "テスト期間ON", "テスト期間OFF（本番）"],
+    ["投稿本数", "週3本（カルーセル）", "週7本（季節4・通年3）"],
+    ["投稿曜日・時刻", "月・水・金 20:00", "毎日 20:00"],
+    ["リール", "当面なし", "当面なし（生成AIの旅あるある動画を別途検討）"],
+    ["使える写真", "こうきの自前写真か許可済みの写真だけ", "こうきの自前写真か許可済みの写真だけ"],
+    ["許諾依頼", "木曜の通知で候補3件まで＋送る文面（送信はこうき）", "木曜の通知で候補5件まで＋送る文面（送信はこうき）。返信の確認・お礼の下書きもAIが作る"],
+    ["宿の紹介", "しない", "おまけ程度に入れてよい"],
+    ["インサイト記録", "24h・72h・7dの3回", "24h・72h・7dの3回"],
+    ["型の見直し", "カルーセル12本がそろったら", "週次分析で2週続けて同じ提案が出たら"],
+  ];
+  return { [TAB_CAL]: cal, [TAB_LOG]: log, [TAB_PERMIT]: permit, [TAB_SETTINGS]: settings };
 }
 
 function colIndex(letters: string): number {

@@ -112,3 +112,14 @@ export function a1(tab: string, ref: string): string {
 
 /** シートから読んだ値（行 × 列、すべて文字列） */
 export type Grid = string[][];
+
+export const TAB_SETTINGS = "設定";
+
+export const SETTINGS_HEADERS = {
+  item: "項目",
+  value: "値",
+  updated: "更新日",
+} as const;
+
+/** 設定タブで「テスト期間」の行を探すときの項目名 */
+export const SETTING_TEST_MODE = "テスト期間";

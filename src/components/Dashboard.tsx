@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { ApproveTask, Dashboard as Data, InsightTask, PermitTask, UrlTask } from "@/lib/model";
 import { BS_URL, INSTAGRAM_POST_RE } from "@/lib/model";
 import { METRICS, type MetricKey } from "@/lib/schema";
+import { modeLabel, type Mode, type Settings } from "@/lib/settings";
 import { postJson, type ApiResult } from "./api";
 
 const SHEET_URL = "https://docs.google.com/spreadsheets/d/1TqcoHaZjGDk1VMWm5O0uQKHCFJte1Q5oE_Gj6tjF_7U/edit";
@@ -88,6 +89,8 @@ export default function Dashboard() {
         </button>
       </header>
 
+      {data && <ModeBar settings={data.settings} onDone={done} />}
+
       {error && (
         <div className="banner" role="alert">
           <div>
@@ -107,6 +110,8 @@ export default function Dashboard() {
         </div>
       )}
 
+      {data && <RulesCard settings={data.settings} />}
+
       <Section ready={!!data} title="確認して予約する" count={data?.approve.length} hint="AIが作ったデザインとキャプションを見て、Meta Business Suiteで予約する">
         {data && <List items={data.approve} empty="確認待ちの投稿はありません。AIが「承認待ち」にするとここに出ます。" render={(t) => <ApproveCard key={t.row} t={t} onDone={done} />} />}
       </Section>
@@ -123,7 +128,7 @@ export default function Dashboard() {
       <Section ready={!!data} title="写真の許諾まわり" count={data?.permit.length} hint="DMやメールの送信、Canvaへのアップロードはこうきだけができる作業">
         {data?.permitError && <p className="secerr">{data.permitError}</p>}
         {data && !data.permitError && (
-          <List items={data.permit} empty="やることはありません（テスト期間中は自分の写真だけ使います）。" render={(t, i) => <PermitCard key={i} t={t} />} />
+          <List items={data.permit} empty={permitEmpty(data.settings)} render={(t, i) => <PermitCard key={i} t={t} />} />
         )}
       </Section>
 
@@ -147,7 +152,11 @@ export default function Dashboard() {
       <Section title="毎週の流れ">
         <div className="card">
           <ul className="week">
-            <li><b>日曜</b>：翌週分（月・水・金）を確認して予約。3日以上たった投稿のインサイトも記録</li>
+            <li>
+              <b>日曜</b>：翌週分
+              {data?.schedule.days || data?.schedule.count ? `（${[data.schedule.days, data.schedule.count].filter(Boolean).join("・")}）` : ""}
+              を確認して予約。3日以上たった投稿のインサイトも記録
+            </li>
             <li><b>月曜</b>：AIが週次分析</li>
             <li><b>木曜</b>：AIが翌々週分を企画</li>
             <li><b>金曜</b>：AIがキャプションを執筆。写真の締め切り</li>
@@ -277,7 +286,7 @@ function ApproveCard({ t, onDone }: { t: ApproveTask; onDone: Toast }) {
       <ol className="steps">
         <li>Canvaでデザインを開いて全ページ確認 →「共有」→「ダウンロード」でPNG・全ページ</li>
         <li>キャプションをコピー</li>
-        <li>Meta Business Suiteでカルーセル投稿を作り、{t.dateLabel}に予約</li>
+        <li>Meta Business Suiteで{t.type}投稿を作り、{t.dateLabel}に予約</li>
         <li>予約できたら「予約した」を押す</li>
       </ol>
       <div className="actions">
@@ -432,5 +441,96 @@ function PermitCard({ t }: { t: PermitTask }) {
         </div>
       )}
     </article>
+  );
+}
+
+// ---------- テスト期間 / 本番運用 ----------
+function permitEmpty(st: Settings) {
+  const photo = st.rules.find((r) => r.name === "使える写真");
+  const v = photo ? (st.mode === "test" ? photo.test : photo.live) : "";
+  return v ? `やることはありません（${modeLabel(st.mode)}：${v}）。` : "やることはありません。";
+}
+
+function ModeBar({ settings: st, onDone }: { settings: Settings; onDone: Toast }) {
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<ApiResult | { info: string } | null>(null);
+  const to: Mode = st.mode === "test" ? "live" : "test";
+  const canSwitch = !!st.raw && !st.warning?.includes("「テスト期間」の値");
+
+  async function submit() {
+    setBusy(true);
+    setMsg({ info: "シートを更新中…" });
+    const r = await postJson("/api/mode", { shown: st.raw ?? "", to });
+    setBusy(false);
+    if (r.ok) {
+      setOpen(false);
+      setMsg(null);
+      onDone(`「${modeLabel(to)}」に切り替えました`);
+    } else setMsg(r);
+  }
+
+  return (
+    <div className="stack" style={{ gap: 10 }}>
+      <div className="row">
+        <span className={"mode " + st.mode}>{modeLabel(st.mode)}</span>
+        {st.updated && <span className="sub" style={{ margin: 0 }}>{st.updated} から</span>}
+        <button type="button" className="small" onClick={() => { setOpen((v) => !v); setMsg(null); }} disabled={!canSwitch} aria-expanded={open}>
+          切り替え
+        </button>
+      </div>
+      {st.warning && <p className="secerr" role="alert">⚠️ {st.warning}</p>}
+      {open && (
+        <div className="confirm">
+          <b>「{modeLabel(st.mode)}」→「{modeLabel(to)}」に切り替えますか？</b>
+          {st.rules.length > 0 && (
+            <div className="diff">
+              {st.rules.map((r) => {
+                const from = st.mode === "test" ? r.test : r.live;
+                const next = to === "test" ? r.test : r.live;
+                const same = from === next;
+                return (
+                  <div className={"drow" + (same ? " same" : "")} key={r.name}>
+                    <div className="dname">{r.name}{same && <span className="tag" style={{ marginLeft: 6 }}>変わらない</span>}</div>
+                    {same ? (
+                      <div className="dval">{next}</div>
+                    ) : (
+                      <div className="dval">
+                        <span className="dfrom">{from || "（空）"}</span>
+                        <span aria-label="から"> → </span>
+                        <b>{next || "（空）"}</b>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          <span>次のAIの作業（毎朝10:43ほか）から新しい動き方になります。</span>
+          <div className="row">
+            <button type="button" className={to === "live" ? "coral" : "primary"} onClick={submit} disabled={busy}>切り替える</button>
+            <button type="button" onClick={() => { setOpen(false); setMsg(null); }} disabled={busy}>やめる</button>
+          </div>
+        </div>
+      )}
+      <Msg r={msg} />
+    </div>
+  );
+}
+
+function RulesCard({ settings: st }: { settings: Settings }) {
+  if (!st.rules.length) return null;
+  return (
+    <section className="sec" aria-label="今のルール">
+      <h2>今のルール <span className={"mode " + st.mode} style={{ fontSize: 12 }}>{modeLabel(st.mode)}</span></h2>
+      <dl className="rules card">
+        {st.rules.map((r) => (
+          <div key={r.name}>
+            <dt>{r.name}</dt>
+            <dd>{(st.mode === "test" ? r.test : r.live) || "—"}</dd>
+          </div>
+        ))}
+      </dl>
+    </section>
   );
 }

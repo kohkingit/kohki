@@ -7,8 +7,9 @@ const writes: CellUpdate[][] = [];
 const backend: SheetsBackend = {
   async batchGet(ranges) {
     return ranges.map((r) => {
-      const m = r.match(/^'(.+)'!A(\d+):AZ(\d+)?$/)!;
+      const m = r.match(/^'(.+)'!A(\d+):[A-Z]+(\d+)?$/)!;
       const g = grids[m[1]];
+      if (!g) throw new Error("no tab");
       const from = +m[2] - 1;
       const to = m[3] ? +m[3] : g.length;
       return g.slice(from, to);
@@ -21,7 +22,7 @@ const backend: SheetsBackend = {
 vi.mock("./sheets", async (orig) => ({ ...(await orig<typeof import("./sheets")>()), sheets: () => backend }));
 vi.mock("./jst", async (orig) => ({ ...(await orig<typeof import("./jst")>()), jstNow: () => ({ today: 20261101, hour: 21, minute: 0 }) }));
 
-const { markScheduled, savePostUrl, recordInsight, parseMetrics } = await import("./actions");
+const { markScheduled, savePostUrl, recordInsight, parseMetrics, switchMode, loadDashboard } = await import("./actions");
 
 const CAL_HEAD = ["投稿日", "曜日", "ステータス", "投稿形式", "地域", "スポット", "テーマ・季節", "切り口（1行目のフック）", "キャプション", "ハッシュタグ", "素材URL", "素材の出典・権利", "デザインURL", "投稿URL", "メモ"];
 const LOG_HEAD = ["投稿日", "スポット", "投稿形式", "リーチ", "いいね", "保存", "シェア", "コメント", "プロフィールアクセス", "フォロー増", "保存率", "エンゲージ率", "記録日"];
@@ -37,7 +38,14 @@ beforeEach(() => {
       ["2026/10/25", "日", "投稿済み", "リール", "京都", "嵐山", "", "", "", "", "", "", "", "https://www.instagram.com/p/X/"],
     ],
     分析ログ: [LOG_HEAD, ["2026/10/20", "a", "b", "1", "1", "1", "1", "1", "1", "1", "1%", "1%", "2026/10/24"], ["", "", "", "", "", "", "", "", "", "", "0%", "0%", ""]],
-    許諾管理: [[]],
+    許諾管理: [["依頼日", "スポット", "相手", "種別", "連絡手段", "連絡先・URL", "写真URL", "ステータス", "利用条件", "クレジット表記", "証拠の保存先", "メモ"]],
+    設定: [
+      ["項目", "値", "説明", "更新日"],
+      ["テスト期間", "ON", "説明", "2026/11/01"],
+      [],
+      ["ルール", "テスト期間ON", "テスト期間OFF（本番）"],
+      ["投稿本数", "週3本", "週7本"],
+    ],
   };
 });
 
@@ -92,5 +100,31 @@ describe("インサイト", () => {
     expect(() => parseMetrics({ ...M, follow: "" })).toThrow("フォロー増");
     expect(() => parseMetrics({ ...M, like: "-1" })).toThrow("いいね");
     expect(parseMetrics({ ...M, reach: "１,２００" }).reach).toBe(1200);
+  });
+});
+
+describe("テスト期間の切り替え", () => {
+  it("B2 と D2 だけ書く", async () => {
+    await switchMode("ON", "live");
+    expect(writes).toEqual([[
+      { range: "'設定'!B2", values: [["OFF"]] },
+      { range: "'設定'!D2", values: [["2026/11/01"]] },
+    ]]);
+  });
+  it("画面の値とシートの値が違えば書かない", async () => {
+    grids["設定"][1][1] = "OFF";
+    await expect(switchMode("ON", "live")).rejects.toMatchObject({ code: "changed" });
+    expect(writes).toEqual([]);
+  });
+  it("値が ON/OFF 以外なら書かない", async () => {
+    grids["設定"][1][1] = "?";
+    await expect(switchMode("?", "live")).rejects.toMatchObject({ code: "header" });
+    expect(writes).toEqual([]);
+  });
+  it("設定タブがなくても画面は出る（テスト期間中＋注意）", async () => {
+    delete (grids as Record<string, unknown>)["設定"];
+    const d = await loadDashboard();
+    expect(d.settings.mode).toBe("test");
+    expect(d.settings.warning).toMatch("設定タブを確認してください");
   });
 });

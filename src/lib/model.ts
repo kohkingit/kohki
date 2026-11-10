@@ -1,5 +1,6 @@
 // シートの中身から「こうきのやること」を組み立てる（純粋関数。テストしやすいようにI/Oなし）。
-import { daysBetween, fmtDate, isAfterPostTime, parseDate, POST_HOUR, type DateKey, type JstNow } from "./jst";
+import { daysBetween, fmtDate, fmtTime, isAfterPostTime, parseDate, type DateKey, type JstNow } from "./jst";
+import { parseSettings, postTime, ruleValue, type Settings } from "./settings";
 import { CAL_HEADERS, findCols, HeaderError, LOG_HEADERS, PERMIT_HEADERS, TAB_CAL, TAB_LOG, TAB_PERMIT } from "./schema";
 import type { Grid } from "./schema";
 
@@ -113,6 +114,9 @@ export interface Dashboard {
   permitError: string | null;
   upcoming: UpcomingItem[];
   summary: { total: number; unscheduledSoon: number; nextScheduled: string | null };
+  settings: Settings;
+  /** 今のモードの「投稿曜日・時刻」「投稿本数」（毎週の流れに出す） */
+  schedule: { days: string | null; count: string | null; time: string };
 }
 
 const PREP_STATUSES = ["アイデア", "下書き", "画像作成中", "承認済み"];
@@ -151,7 +155,10 @@ export function buildPermitTasks(grid: Grid, cal: CalRow[], now: JstNow): Permit
   return out;
 }
 
-export function buildDashboard(calGrid: Grid, logGrid: Grid, permitGrid: Grid, now: JstNow): Dashboard {
+export function buildDashboard(calGrid: Grid, logGrid: Grid, permitGrid: Grid, now: JstNow, settingsGrid: Grid | null = null): Dashboard {
+  const settings = parseSettings(settingsGrid);
+  const time = postTime(settings); // 投稿時刻は設定タブの「投稿曜日・時刻」から（なければ 20:00）
+  const pt = fmtTime(time);
   const cal = parseCalendar(calGrid); // 見出しがなければここで HeaderError（画面全体をエラーに）
   const byDate = (a: CalRow, b: CalRow) => a.date - b.date || a.row - b.row;
 
@@ -161,16 +168,16 @@ export function buildDashboard(calGrid: Grid, logGrid: Grid, permitGrid: Grid, n
     .map((r) => {
       const daysLeft = daysBetween(now.today, r.date);
       return {
-        row: r.row, date: r.date, dateLabel: `${fmtDate(r.date)} ${POST_HOUR}:00`, type: r.type || "カルーセル", area: r.area,
+        row: r.row, date: r.date, dateLabel: `${fmtDate(r.date)} ${pt}`, type: r.type || "カルーセル", area: r.area,
         daysLeft, urgent: daysLeft <= 3, hook: r.hook, spots: r.spots,
         designUrl: safeLink(r.design), copyText: copyText(r.caption, r.tags),
       };
     });
 
   const url: UrlTask[] = cal
-    .filter((r) => (r.status === "承認済み" || r.status === "投稿済み") && isAfterPostTime(r.date, now) && !r.url)
+    .filter((r) => (r.status === "承認済み" || r.status === "投稿済み") && isAfterPostTime(r.date, now, time) && !r.url)
     .sort(byDate)
-    .map((r) => ({ row: r.row, date: r.date, dateLabel: `${fmtDate(r.date)} ${POST_HOUR}:00`, type: r.type || "カルーセル", area: r.area, spots: r.spots, status: r.status }));
+    .map((r) => ({ row: r.row, date: r.date, dateLabel: `${fmtDate(r.date)} ${pt}`, type: r.type || "カルーセル", area: r.area, spots: r.spots, status: r.status }));
 
   let insight: InsightTask[] = [];
   let insightError: string | null = null;
@@ -209,19 +216,20 @@ export function buildDashboard(calGrid: Grid, logGrid: Grid, permitGrid: Grid, n
 
   // 3日以内（今日〜3日後、過ぎたものも含む）に投稿日が来るのに、まだ予約されていない投稿
   const unscheduledSoon = cal.filter(
-    (r) => daysBetween(now.today, r.date) <= 3 && !isAfterPostTime(r.date, now) && !["承認済み", "投稿済み", "見送り"].includes(r.status),
+    (r) => daysBetween(now.today, r.date) <= 3 && !isAfterPostTime(r.date, now, time) && !["承認済み", "投稿済み", "見送り"].includes(r.status),
   ).length;
 
   const next = cal
-    .filter((r) => r.status === "承認済み" && !isAfterPostTime(r.date, now))
+    .filter((r) => r.status === "承認済み" && !isAfterPostTime(r.date, now, time))
     .sort(byDate)[0];
 
   return {
-    approve, url, insight, insightError, permit, permitError, upcoming,
+    approve, url, insight, insightError, permit, permitError, upcoming, settings,
+    schedule: { days: ruleValue(settings, "投稿曜日・時刻"), count: ruleValue(settings, "投稿本数"), time: pt },
     summary: {
       total: approve.length + url.length + insight.length + permit.length,
       unscheduledSoon,
-      nextScheduled: next ? `${fmtDate(next.date)} ${POST_HOUR}:00` : null,
+      nextScheduled: next ? `${fmtDate(next.date)} ${pt}` : null,
     },
   };
 }

@@ -54,10 +54,17 @@ export function fmtSheetDate(k: DateKey): string {
   return `${y}/${String(m).padStart(2, "0")}/${String(d).padStart(2, "0")}`;
 }
 
-/** 投稿時刻（毎回 20:00） */
-export const POST_HOUR = 20;
+export interface PostTime {
+  hour: number;
+  minute: number;
+}
 
-/** 投稿日の20:00を過ぎているか */
-export function isAfterPostTime(date: DateKey, now: JstNow): boolean {
-  return date < now.today || (date === now.today && now.hour >= POST_HOUR);
+/** 投稿時刻の初期値（設定タブに書かれていないとき） */
+export const DEFAULT_POST_TIME: PostTime = { hour: 20, minute: 0 };
+
+export const fmtTime = (t: PostTime) => `${t.hour}:${String(t.minute).padStart(2, "0")}`;
+
+/** 投稿日の投稿時刻（初期値 20:00）を過ぎているか */
+export function isAfterPostTime(date: DateKey, now: JstNow, t: PostTime = DEFAULT_POST_TIME): boolean {
+  return date < now.today || (date === now.today && now.hour * 60 + now.minute >= t.hour * 60 + t.minute);
 }
